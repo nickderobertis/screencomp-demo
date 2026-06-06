@@ -28,3 +28,5 @@ npm install
 npx playwright install chromium
 node capture.mjs shots/current site
 ```
+
+<!-- trivial doc-only change: should produce no screenshot diff -->
