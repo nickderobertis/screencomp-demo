@@ -1,0 +1,89 @@
+name: Visual docs
+
+# Demonstrates the screencomp visual-docs flow end to end:
+#   * push to main      -> capture screenshots, build a gallery, deploy to Pages
+#   * pull request      -> capture this branch AND its base branch in the same
+#                          run (so unchanged pages are byte-identical), then post
+#                          a sticky screenshot-diff comment
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: visual-docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Build the gallery from the current screenshots and publish it to Pages.
+  gallery:
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - uses: nickderobertis/screencomp@v0.1.1
+        with:
+          version: latest
+      - name: Capture screenshots
+        run: node capture.mjs shots/current site
+      - name: Build gallery
+        run: screencomp gallery --input shots/current --output site_gallery --title "Acme — visual docs"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site_gallery
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  # Compare this PR against its base branch and post a sticky diff comment.
+  diff:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - uses: nickderobertis/screencomp@v0.1.1
+        with:
+          version: latest
+      - name: Capture current (this branch)
+        run: node capture.mjs shots/current site
+      - name: Capture baseline (base branch, same run)
+        run: |
+          git worktree add ../base "origin/${{ github.base_ref }}"
+          node capture.mjs shots/baseline ../base/site
+      - name: Post sticky screenshot-diff comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          screencomp comment \
+            --baseline shots/baseline \
+            --current shots/current \
+            --gallery-url "https://nickderobertis.github.io/screencomp-demo/" \
+            --output comment.md
+          gh pr comment "$PR" --body-file comment.md --edit-last \
+            || gh pr comment "$PR" --body-file comment.md
