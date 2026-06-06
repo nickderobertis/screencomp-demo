@@ -1,35 +1,35 @@
 name: Visual docs
 
 # Demonstrates the screencomp visual-docs flow end to end:
-#   * push to main      -> capture screenshots, build a gallery, deploy to Pages
-#   * pull request      -> capture this branch AND its base branch in the same
-#                          run (so unchanged pages are byte-identical), then post
-#                          a sticky screenshot-diff comment
+#   * push to main      -> latest gallery published to the site root
+#   * pull request      -> a before/after DIFF preview published under pr/<n>/,
+#                          linked from a sticky comment
+#   * pull request close -> the preview directory is removed
+#
+# Both the root gallery and the pr/<n>/ previews live on the gh-pages branch, so
+# they coexist (Pages is served from that branch).
 
 on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, closed]
 
 permissions:
   contents: read
 
+# Serialize so concurrent runs never race to push the gh-pages branch.
 concurrency:
-  group: visual-docs-${{ github.ref }}
-  cancel-in-progress: true
+  group: gh-pages-deploy
+  cancel-in-progress: false
 
 jobs:
-  # Build the gallery from the current screenshots and publish it to Pages.
+  # Publish the latest gallery to the site root.
   gallery:
     if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      contents: write # push to gh-pages
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -37,26 +37,28 @@ jobs:
           node-version: 20
       - run: npm install
       - run: npx playwright install --with-deps chromium
-      - uses: nickderobertis/screencomp@v0.1.1
+      - uses: nickderobertis/screencomp@v0.1.3
         with:
           version: latest
-      - name: Capture screenshots
-        run: node capture.mjs shots/current site
-      - name: Build gallery
-        run: screencomp gallery --input shots/current --output site_gallery --title "Acme — visual docs"
-      - uses: actions/upload-pages-artifact@v3
+      - name: Capture and build gallery
+        run: |
+          node capture.mjs shots/current site
+          screencomp gallery --input shots/current --output site_gallery --title "Acme — visual docs"
+      - name: Publish gallery to site root
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: site_gallery
-      - id: deploy
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site_gallery
+          destination_dir: .
+          keep_files: true # preserve existing pr/<n>/ previews
 
-  # Compare this PR against its base branch and post a sticky diff comment.
+  # Build a before/after diff preview for the PR, publish it, and comment.
   diff:
-    if: ${{ github.event_name == 'pull_request' }}
+    if: ${{ github.event_name == 'pull_request' && github.event.action != 'closed' }}
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pull-requests: write
+      contents: write # push to gh-pages
+      pull-requests: write # post the comment
     steps:
       - uses: actions/checkout@v4
         with:
@@ -66,7 +68,7 @@ jobs:
           node-version: 20
       - run: npm install
       - run: npx playwright install --with-deps chromium
-      - uses: nickderobertis/screencomp@v0.1.1
+      - uses: nickderobertis/screencomp@v0.1.3
         with:
           version: latest
       - name: Capture current (this branch)
@@ -75,7 +77,21 @@ jobs:
         run: |
           git worktree add ../base "origin/${{ github.base_ref }}"
           node capture.mjs shots/baseline ../base/site
-      - name: Post sticky screenshot-diff comment
+      - name: Build before/after diff preview
+        run: |
+          screencomp gallery \
+            --input shots/current \
+            --baseline shots/baseline \
+            --output preview \
+            --title "PR #${{ github.event.pull_request.number }} — visual diff"
+      - name: Publish preview under pr/<n>/
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./preview
+          destination_dir: pr/${{ github.event.pull_request.number }}
+          keep_files: true # do not disturb the root gallery or other PRs
+      - name: Post sticky comment linking the diff preview
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
@@ -83,7 +99,32 @@ jobs:
           screencomp comment \
             --baseline shots/baseline \
             --current shots/current \
-            --gallery-url "https://nickderobertis.github.io/screencomp-demo/" \
+            --gallery-url "https://nickderobertis.github.io/screencomp-demo/pr/${PR}/" \
             --output comment.md
           gh pr comment "$PR" --body-file comment.md --edit-last \
             || gh pr comment "$PR" --body-file comment.md
+
+  # Remove a PR's preview directory when the PR closes.
+  cleanup:
+    if: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 0
+      - name: Remove pr/<n>/ preview
+        env:
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -d "pr/${PR}" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git rm -r "pr/${PR}"
+            git commit -m "chore: remove visual-diff preview for PR #${PR}"
+            git push
+          else
+            echo "No preview directory for PR #${PR}."
+          fi
