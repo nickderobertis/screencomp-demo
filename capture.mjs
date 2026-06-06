@@ -1,21 +1,25 @@
 // Capture deterministic screenshots into <outRoot>/<project>/<name>.png, the
 // layout screencomp classifies. Usage: node capture.mjs [outRoot] [siteDir]
 import { chromium } from "playwright";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 
 const outRoot = process.argv[2] ?? "shots/current";
 const siteDir = process.argv[3] ?? "site";
 
-// Each project is a viewport variant; each name is a page.
+// Each project is a viewport variant.
 const projects = [
   ["desktop", { width: 1280, height: 800 }],
   ["mobile", { width: 390, height: 844 }],
 ];
-const pages = [
-  ["home", "index.html"],
-  ["about", "about.html"],
-];
+
+// Discover pages from the site directory so adding or removing a page needs no
+// change here — and so a base-vs-head capture naturally surfaces added/removed
+// pages (whichever side lacks the file simply has no shot for it).
+const pages = (await readdir(siteDir))
+  .filter((file) => file.endsWith(".html"))
+  .sort()
+  .map((file) => [file === "index.html" ? "home" : path.basename(file, ".html"), file]);
 
 const browser = await chromium.launch();
 try {
