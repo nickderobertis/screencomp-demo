@@ -1,4 +1,16 @@
 node_modules/
-shots/
+
+# Captured screenshot working trees (regenerated every run; never committed).
+shots/current/
+shots/verify/
+before/
+preview/
 site_gallery/
 comment.md
+
+# The committed baseline is the tiny digest manifest only — shots/baseline/*.sha256
+# is tracked; baseline PNGs are never stored.
+
+# QEMU core dumps left by amd64 Chromium crashes under emulation (Apple Silicon).
+core
+*.core
