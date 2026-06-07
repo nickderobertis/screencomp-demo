@@ -72,3 +72,5 @@ screencomp manifest --input shots/current --platform linux-x86_64 \
 ```
 
 CI regenerates and commits this on every PR; seed it once before the first PR.
+
+<!-- Docs-only edit: exercises the non-visual path (CI should report no visual changes). -->
