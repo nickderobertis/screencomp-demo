@@ -46,6 +46,24 @@ fallback Chromium is unstable (`capture.mjs` works around this by launching one
 browser per viewport, and the flag set drops `--use-angle=swiftshader`, which
 QEMU cannot JIT — see the comments in `capture.mjs`).
 
+### One-command check
+
+[`scripts/verify-local.sh`](scripts/verify-local.sh) runs the whole verification
+on the current machine: it captures twice in the pinned container, proves the
+capture is byte-reproducible, and confirms it matches the committed baseline
+manifest (i.e. this machine reproduces CI's amd64 bytes). Works on x86_64 Linux
+(native) and on arm64 Linux / Apple Silicon (amd64 under emulation).
+
+```sh
+# screencomp must be on PATH (or pass SCREENCOMP=/path/to/screencomp)
+./scripts/verify-local.sh
+```
+
+On arm64 Linux, amd64 runs under QEMU — if the script reports it cannot launch
+`linux/amd64`, install binfmt once: `docker run --privileged --rm tonistiigi/binfmt --install amd64`.
+
+The equivalent manual steps:
+
 ```sh
 IMG=mcr.microsoft.com/playwright:v1.60.0-noble   # must match package.json
 
