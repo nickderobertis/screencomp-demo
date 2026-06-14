@@ -1,22 +1,15 @@
 name: Visual docs
 
-# Demonstrates the screencomp visual-docs standard end to end:
-#   * capture in ONE pinned linux/amd64 Playwright container (deterministic bytes
-#     run-to-run and machine-to-machine — including an Apple Silicon dev box
-#     emulating amd64), so there is a single platform key: linux-x86_64.
-#   * the committed baseline is an image-free DIGEST MANIFEST
-#     (shots/baseline/linux-x86_64.sha256), never the baseline PNGs.
-#   * push to main      -> publish the blessed gallery to the site root (this is
-#                          also the "before" pixels used by PR previews).
-#   * pull request      -> capture, classify against the manifest, deploy a
-#                          before/after preview under pr/<n>/ (before = main's
-#                          deployed gallery), post a sticky comment, and push a
-#                          regenerated manifest to the PR branch.
-#   * pull request close -> remove the pr/<n>/ preview.
+# The canonical, copy-paste setup for the screencomp visual-docs standard. The
+# whole pipeline — capture in a pinned container, verify reproducibility,
+# classify against the committed image-free manifest, deploy the gallery (the
+# blessed "current state" on push; a per-PR preview under pr-<n>/), post a sticky
+# before/after comment, and push the regenerated manifest to the PR branch — is
+# delegated to screencomp's reusable workflow. The ONLY thing this repo provides
+# is its capture command (capture.mjs); the only thing it still hand-rolls is the
+# preview cleanup on PR close, which the reusable workflow does not handle.
 #
-# The capture runs via `docker run --platform=linux/amd64` (not a `container:`
-# job) so gh/JS actions stay on the host and the SAME command runs locally and in
-# CI — see README "Local capture".
+# See README "Local capture" to reproduce the same captures on your machine.
 
 on:
   push:
@@ -25,226 +18,57 @@ on:
     types: [opened, synchronize, reopened, closed]
 
 permissions:
-  contents: read
+  contents: write # push gh-pages; commit the regenerated manifest to the PR branch
+  pull-requests: write # post the diff comment
 
 # Serialize so concurrent runs never race to push the gh-pages branch.
 concurrency:
   group: gh-pages-deploy
   cancel-in-progress: false
 
-env:
-  IMAGE: mcr.microsoft.com/playwright:v1.60.0-noble # MUST match package.json's playwright version
-  MANIFEST: shots/baseline/linux-x86_64.sha256
-
 jobs:
-  # Publish the latest gallery to the site root (the blessed "current state").
-  gallery:
-    if: ${{ github.event_name == 'push' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write # push to gh-pages
-    steps:
-      - uses: actions/checkout@v4
-      - uses: nickderobertis/screencomp@v0.1.10
-        with:
-          version: latest
+  # Capture -> verify -> classify -> gallery -> deploy -> comment -> manifest.
+  # Runs on push and on PR open/synchronize/reopen; skipped on PR close.
+  visual-docs:
+    if: ${{ !(github.event_name == 'pull_request' && github.event.action == 'closed') }}
+    uses: nickderobertis/screencomp/.github/workflows/visual-docs-reusable.yml@v0.1.11
+    with:
+      platform: linux-x86_64
+      container: mcr.microsoft.com/playwright:v1.60.0-noble # MUST match package.json's playwright version
+      gallery-title: "Acme — visual docs"
+      # Runs inside `container`, once into shots/current/<platform> and again into
+      # shots/verify/<platform> for the reproducibility gate. capture.mjs writes
+      # $SHOTS_OUT/<project>/<name>.png — exactly the layout screencomp classifies.
+      capture-command: |
+        npm ci
+        node capture.mjs "$SHOTS_OUT" site
+    secrets:
+      # Optional. Only needed if this repo enforces required status checks: the
+      # default GITHUB_TOKEN's manifest push starts no runs and would strand the
+      # PR, so set VISUAL_DOCS_PUSH_TOKEN to a credential that can trigger
+      # workflows (a fine-grained PAT or App token). Empty => falls back to
+      # GITHUB_TOKEN, which is fine when no checks are required.
+      push-token: ${{ secrets.VISUAL_DOCS_PUSH_TOKEN }}
 
-      - name: Capture (current + verify) in the pinned container
-        run: |
-          set -euo pipefail
-          # Capture runs as root in the container (Playwright then auto-adds
-          # --no-sandbox). --ipc=host + --shm-size keep Chromium stable; identical
-          # command runs locally on Apple Silicon under emulation (see README).
-          docker run --rm --platform=linux/amd64 --ipc=host --shm-size=2g \
-            -v "$PWD:/work" -w /work "$IMAGE" \
-            bash -lc 'set -euo pipefail
-              npm ci
-              node capture.mjs shots/current/linux-x86_64 site
-              node capture.mjs shots/verify/linux-x86_64 site'
-
-      - name: Preflight the capture layout (doctor)
-        run: |
-          set -euo pipefail
-          # `doctor` (new in v0.1.10) resolves the platform key and sanity-checks
-          # the <project>/<name>.png layout before anything classifies it, so an
-          # empty tree or a wrong --platform fails fast with a clear message.
-          screencomp doctor --input shots/current --platform auto --exit-code
-
-      - name: Reproducibility gate (capture is byte-identical)
-        run: |
-          set -euo pipefail
-          # `verify` (new in v0.1.10) is the purpose-built reproducibility gate:
-          # two independent captures of the same build must be byte-identical.
-          # (Replaces the old `classify --baseline/--current ... --exit-code`.)
-          screencomp verify --first shots/current --second shots/verify \
-            --platform auto --exit-code
-          # shots/verify is gitignored and container-owned; leave it in place.
-
-      - name: Build gallery
-        run: |
-          screencomp gallery --input shots/current --platform auto \
-            --output site_gallery --title "Acme — visual docs"
-
-      - name: Publish gallery to site root
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./site_gallery
-          destination_dir: .
-          keep_files: true # preserve existing pr/<n>/ previews
-
-  # Capture the PR, classify against the committed manifest, deploy a before/after
-  # preview, comment, and push the regenerated manifest.
-  diff:
-    if: ${{ github.event_name == 'pull_request' && github.event.action != 'closed' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write # push the regenerated manifest to the PR branch
-      pull-requests: write # post the comment
-    env:
-      PR: ${{ github.event.pull_request.number }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }} # PR branch, so the manifest can be pushed back
-          fetch-depth: 0
-      - uses: nickderobertis/screencomp@v0.1.10
-        with:
-          version: latest
-
-      - name: Capture (current + verify) in the pinned container
-        run: |
-          set -euo pipefail
-          # Capture runs as root in the container (Playwright then auto-adds
-          # --no-sandbox). --ipc=host + --shm-size keep Chromium stable; identical
-          # command runs locally on Apple Silicon under emulation (see README).
-          docker run --rm --platform=linux/amd64 --ipc=host --shm-size=2g \
-            -v "$PWD:/work" -w /work "$IMAGE" \
-            bash -lc 'set -euo pipefail
-              npm ci
-              node capture.mjs shots/current/linux-x86_64 site
-              node capture.mjs shots/verify/linux-x86_64 site'
-
-      - name: Preflight the capture layout (doctor)
-        run: |
-          set -euo pipefail
-          # `doctor` (new in v0.1.10) resolves the platform key and sanity-checks
-          # the <project>/<name>.png layout before anything classifies it, so an
-          # empty tree or a wrong --platform fails fast with a clear message.
-          screencomp doctor --input shots/current --platform auto --exit-code
-
-      - name: Reproducibility gate (capture is byte-identical)
-        run: |
-          set -euo pipefail
-          # `verify` (new in v0.1.10) is the purpose-built reproducibility gate:
-          # two independent captures of the same build must be byte-identical.
-          # (Replaces the old `classify --baseline/--current ... --exit-code`.)
-          screencomp verify --first shots/current --second shots/verify \
-            --platform auto --exit-code
-          # shots/verify is gitignored and container-owned; leave it in place.
-
-      - name: Classify against the committed baseline manifest
-        run: |
-          # Differences are EXPECTED on a feature PR, so this is informational and
-          # never fails the job — the change is surfaced by the comment and the
-          # committed manifest diff. Drop `|| true` to make changes block instead.
-          screencomp classify --baseline-manifest "$MANIFEST" \
-            --current shots/current --platform auto || true
-
-      - name: Fetch main's deployed gallery (the "before" pixels)
-        uses: actions/checkout@v4
-        continue-on-error: true # no gh-pages yet on the very first run
-        with:
-          ref: gh-pages
-          path: gh-pages
-
-      - name: Assemble the before-tree from main's deployed images
-        run: |
-          set -euo pipefail
-          # Reconstruct a linux-x86_64 baseline tree from main's deployed gallery
-          # (images live at gh-pages/<project>/<name>.png). No re-capture, no
-          # committed PNGs. Missing/first-run => empty before => all shots "added".
-          mkdir -p before/linux-x86_64
-          for proj in shots/current/linux-x86_64/*/; do
-            name="$(basename "$proj")"
-            if [ -d "gh-pages/$name" ]; then
-              mkdir -p "before/linux-x86_64/$name"
-              cp gh-pages/"$name"/*.png "before/linux-x86_64/$name"/ 2>/dev/null || true
-            fi
-          done
-
-      - name: Build before/after preview
-        run: |
-          screencomp gallery --input shots/current --baseline before \
-            --platform auto --output preview \
-            --title "PR #${PR} — visual diff"
-
-      - name: Publish preview under pr/<n>/
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./preview
-          destination_dir: pr/${{ env.PR }}
-          keep_files: true # do not disturb the root gallery or other PRs
-
-      - name: Post sticky comment linking the preview
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          # The deployed preview is a DIFF gallery (built with `--baseline before`),
-          # so its images live under <pr>/baseline/<project>/<name>.png and
-          # <pr>/current/<project>/<name>.png. Because we classify with
-          # `--baseline-manifest` (no baseline PNGs), `comment` left to itself would
-          # point "After" at the plain <URL>/<project>/<name>.png layout (a 404 here)
-          # and omit "Before". The explicit --baseline-url/--current-url overrides
-          # point each side at the diff gallery's real subtrees, so both the Before
-          # and After thumbnails resolve.
-          BASE="https://nickderobertis.github.io/screencomp-demo/pr/${PR}"
-          screencomp comment --baseline-manifest "$MANIFEST" \
-            --current shots/current --platform auto \
-            --gallery-url "$BASE/" \
-            --baseline-url "$BASE/baseline/" \
-            --current-url "$BASE/current/" \
-            --output comment.md
-          gh pr comment "$PR" --body-file comment.md --edit-last \
-            || gh pr comment "$PR" --body-file comment.md
-
-      - name: Update the baseline manifest on the PR branch
-        run: |
-          set -euo pipefail
-          # Tiny text file; its diff (old hash -> new hash per shot) is the review
-          # record. Pushing with GITHUB_TOKEN does NOT re-trigger this workflow, so
-          # there is no capture loop. (Fork PRs get a read-only token; this no-ops.)
-          screencomp manifest --input shots/current --platform auto --output "$MANIFEST"
-          if [ -n "$(git status --porcelain "$MANIFEST")" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add "$MANIFEST"
-            git commit -m "chore: update screenshot baseline manifest"
-            git push
-          fi
-
-  # Remove a PR's preview directory when the PR closes.
+  # Remove a PR's preview directory when the PR closes. The reusable workflow has
+  # no close handler, so without this the pr-<n>/ previews accrue on gh-pages.
   cleanup:
     if: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           ref: gh-pages
           fetch-depth: 0
-      - name: Remove pr/<n>/ preview
+      - name: Remove pr-<n>/ preview
         env:
           PR: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          if [ -d "pr/${PR}" ]; then
+          if [ -d "pr-${PR}" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git rm -r "pr/${PR}"
+            git rm -r "pr-${PR}"
             git commit -m "chore: remove visual-diff preview for PR #${PR}"
             git push
           else

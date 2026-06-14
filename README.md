@@ -26,32 +26,34 @@ Two ideas from the screencomp standard:
   compares by content digest, so the manifest is all `classify`/`comment` need,
   and the repo never accrues binary history.
 
-[`.github/workflows/visual-docs.yml`](.github/workflows/visual-docs.yml):
+[`.github/workflows/visual-docs.yml`](.github/workflows/visual-docs.yml) is the
+**canonical, copy-paste setup**: it delegates the entire pipeline to screencomp's
+**reusable workflow** (`visual-docs-reusable.yml`, new in **v0.1.11**) and supplies
+only this repo's capture command. End to end:
 
-- **push to `main`** → capture → `screencomp doctor` preflight → `screencomp
-  verify` reproducibility gate → `screencomp gallery` → deploy to GitHub Pages
-  (the blessed "current state", also the *before* pixels for PR previews).
-- **pull request** → capture → `doctor` + `verify` → classify against the
-  committed manifest → deploy a **before/after** preview under `pr/<n>/`
-  (before = main's deployed gallery) → `screencomp comment` posts a sticky
-  comment → push a regenerated manifest to the PR branch (its text diff,
-  old→new hash per shot, is the review record).
-- **pull request close** → remove the `pr/<n>/` preview.
+- **push to `main`** → capture → `verify` reproducibility gate → classify →
+  `gallery` → deploy to GitHub Pages root (the blessed "current state", and the
+  baseline the PR comment links its "Before" to).
+- **pull request** → capture → `verify` → classify against the committed manifest
+  → deploy a preview under `pr-<n>/` → sticky before/after comment (Before = the
+  deployed root gallery, After = the preview) → push a regenerated manifest to
+  the PR branch (its text diff, old→new hash per shot, is the review record).
+- **pull request close** → remove the `pr-<n>/` preview (the one step this repo
+  still hand-rolls, since the reusable workflow has no close handler).
 
-The pipeline tracks screencomp ≥ **v0.1.10**. Two of its commands are
-purpose-built for the two gates above: `screencomp doctor` preflights the
-`<project>/<name>.png` layout and resolves the platform key (catching an empty
-tree or a wrong `--platform` early), and `screencomp verify` is the dedicated
-reproducibility gate — two independent captures of one build must be
-byte-identical (it replaces the earlier `classify --baseline/--current` trick).
+To copy this into your own project: lift `visual-docs.yml`, point its
+`capture-command` at your stack (it must write `$SHOTS_OUT/<project>/<name>.png`),
+set `container` to your Playwright image, and seed the manifest once (below). The
+reusable workflow installs screencomp, runs the capture twice for the gate, and
+handles the gallery/preview/comment/manifest for you. If your repo enforces
+required status checks, set a `VISUAL_DOCS_PUSH_TOKEN` secret (a fine-grained PAT
+or App token) so the manifest auto-push can re-trigger CI — otherwise the default
+`GITHUB_TOKEN`'s push starts no runs and the PR stalls.
 
-The PR preview is a **diff gallery** (`gallery --baseline before`), so its images
-live under `pr/<n>/baseline/…` and `pr/<n>/current/…`. Because the comment
-classifies against the image-free manifest (`--baseline-manifest`, no baseline
-PNGs), `screencomp comment` is given explicit `--baseline-url`/`--current-url`
-overrides pointing at those two subtrees — otherwise it would point "After" at a
-plain-layout URL and drop the "Before" link. `--gallery-url` remains the
-"View full gallery" link.
+Locally, the same `screencomp` commands the reusable workflow runs in CI are
+available to you directly — `doctor` preflights the `<project>/<name>.png` layout
+and resolves the platform key, and `verify` is the dedicated reproducibility gate
+(two captures of one build must be byte-identical). See [Local capture](#local-capture).
 
 ## Local capture
 
