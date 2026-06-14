@@ -45,7 +45,7 @@ jobs:
       contents: write # push to gh-pages
     steps:
       - uses: actions/checkout@v4
-      - uses: nickderobertis/screencomp@v0.1.9
+      - uses: nickderobertis/screencomp@v0.1.10
         with:
           version: latest
 
@@ -62,10 +62,21 @@ jobs:
               node capture.mjs shots/current/linux-x86_64 site
               node capture.mjs shots/verify/linux-x86_64 site'
 
+      - name: Preflight the capture layout (doctor)
+        run: |
+          set -euo pipefail
+          # `doctor` (new in v0.1.10) resolves the platform key and sanity-checks
+          # the <project>/<name>.png layout before anything classifies it, so an
+          # empty tree or a wrong --platform fails fast with a clear message.
+          screencomp doctor --input shots/current --platform auto --exit-code
+
       - name: Reproducibility gate (capture is byte-identical)
         run: |
           set -euo pipefail
-          screencomp classify --baseline shots/current --current shots/verify \
+          # `verify` (new in v0.1.10) is the purpose-built reproducibility gate:
+          # two independent captures of the same build must be byte-identical.
+          # (Replaces the old `classify --baseline/--current ... --exit-code`.)
+          screencomp verify --first shots/current --second shots/verify \
             --platform auto --exit-code
           # shots/verify is gitignored and container-owned; leave it in place.
 
@@ -97,7 +108,7 @@ jobs:
         with:
           ref: ${{ github.head_ref }} # PR branch, so the manifest can be pushed back
           fetch-depth: 0
-      - uses: nickderobertis/screencomp@v0.1.9
+      - uses: nickderobertis/screencomp@v0.1.10
         with:
           version: latest
 
@@ -114,10 +125,21 @@ jobs:
               node capture.mjs shots/current/linux-x86_64 site
               node capture.mjs shots/verify/linux-x86_64 site'
 
+      - name: Preflight the capture layout (doctor)
+        run: |
+          set -euo pipefail
+          # `doctor` (new in v0.1.10) resolves the platform key and sanity-checks
+          # the <project>/<name>.png layout before anything classifies it, so an
+          # empty tree or a wrong --platform fails fast with a clear message.
+          screencomp doctor --input shots/current --platform auto --exit-code
+
       - name: Reproducibility gate (capture is byte-identical)
         run: |
           set -euo pipefail
-          screencomp classify --baseline shots/current --current shots/verify \
+          # `verify` (new in v0.1.10) is the purpose-built reproducibility gate:
+          # two independent captures of the same build must be byte-identical.
+          # (Replaces the old `classify --baseline/--current ... --exit-code`.)
+          screencomp verify --first shots/current --second shots/verify \
             --platform auto --exit-code
           # shots/verify is gitignored and container-owned; leave it in place.
 

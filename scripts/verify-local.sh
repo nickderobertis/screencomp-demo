@@ -53,7 +53,12 @@ find "shots/current/${KEY}" -name '*.png' | sort
 
 # --- 2. reproducibility gate -------------------------------------------------
 note "2/3 reproducibility gate: two independent captures must be byte-identical"
-if "$SC" classify --baseline shots/current --current shots/verify --platform "$KEY" --exit-code; then
+# `doctor` (v0.1.10) preflights the <project>/<name>.png layout and resolves the
+# platform key before the gate, turning a mislaid capture into a clear message.
+"$SC" doctor --input shots/current --platform "$KEY" --exit-code || true
+# `verify` (v0.1.10) is the purpose-built reproducibility gate (replaces the old
+# `classify --baseline/--current`): two captures of one build must match exactly.
+if "$SC" verify --first shots/current --second shots/verify --platform "$KEY" --exit-code; then
   echo "PASS: capture is reproducible run-to-run on this machine"
 else
   echo "FAIL: capture is NOT reproducible here (nondeterministic rendering)"; fail=1

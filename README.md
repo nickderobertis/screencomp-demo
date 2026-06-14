@@ -28,14 +28,22 @@ Two ideas from the screencomp standard:
 
 [`.github/workflows/visual-docs.yml`](.github/workflows/visual-docs.yml):
 
-- **push to `main`** → capture → reproducibility gate → `screencomp gallery` →
-  deploy to GitHub Pages (the blessed "current state", also the *before* pixels
-  for PR previews).
-- **pull request** → capture → classify against the committed manifest → deploy a
-  **before/after** preview under `pr/<n>/` (before = main's deployed gallery) →
-  `screencomp comment` posts a sticky comment → push a regenerated manifest to
-  the PR branch (its text diff, old→new hash per shot, is the review record).
+- **push to `main`** → capture → `screencomp doctor` preflight → `screencomp
+  verify` reproducibility gate → `screencomp gallery` → deploy to GitHub Pages
+  (the blessed "current state", also the *before* pixels for PR previews).
+- **pull request** → capture → `doctor` + `verify` → classify against the
+  committed manifest → deploy a **before/after** preview under `pr/<n>/`
+  (before = main's deployed gallery) → `screencomp comment` posts a sticky
+  comment → push a regenerated manifest to the PR branch (its text diff,
+  old→new hash per shot, is the review record).
 - **pull request close** → remove the `pr/<n>/` preview.
+
+The pipeline tracks screencomp ≥ **v0.1.10**. Two of its commands are
+purpose-built for the two gates above: `screencomp doctor` preflights the
+`<project>/<name>.png` layout and resolves the platform key (catching an empty
+tree or a wrong `--platform` early), and `screencomp verify` is the dedicated
+reproducibility gate — two independent captures of one build must be
+byte-identical (it replaces the earlier `classify --baseline/--current` trick).
 
 ## Local capture
 
@@ -55,7 +63,10 @@ manifest (i.e. this machine reproduces CI's amd64 bytes). Works on x86_64 Linux
 (native) and on arm64 Linux / Apple Silicon (amd64 under emulation).
 
 ```sh
-# screencomp must be on PATH (or pass SCREENCOMP=/path/to/screencomp)
+# screencomp must be on PATH (or pass SCREENCOMP=/path/to/screencomp). Install
+# the checksum-verified prebuilt binary (v0.1.10's POSIX installer; it aborts
+# rather than install a binary it cannot SHA-256 verify):
+#   curl -fsSL https://raw.githubusercontent.com/nickderobertis/screencomp/main/scripts/install.sh | sh
 ./scripts/verify-local.sh
 ```
 
@@ -73,7 +84,10 @@ for out in shots/current shots/verify; do
     -v "$PWD:/work" -w /work "$IMG" \
     bash -lc "npm ci && node capture.mjs $out/linux-x86_64 site"
 done
-screencomp classify --baseline shots/current --current shots/verify \
+
+# Preflight the layout, then gate on byte-for-byte reproducibility (v0.1.10).
+screencomp doctor --input shots/current --platform linux-x86_64 --exit-code
+screencomp verify --first shots/current --second shots/verify \
   --platform linux-x86_64 --exit-code        # expect exit 0
 
 # Compare against the committed baseline manifest (host is not linux-x86_64, so
