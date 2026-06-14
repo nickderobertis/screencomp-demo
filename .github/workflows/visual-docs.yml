@@ -31,14 +31,14 @@ jobs:
   # Runs on push and on PR open/synchronize/reopen; skipped on PR close.
   visual-docs:
     if: ${{ !(github.event_name == 'pull_request' && github.event.action == 'closed') }}
-    uses: nickderobertis/screencomp/.github/workflows/visual-docs-reusable.yml@v0.1.11
+    uses: nickderobertis/screencomp/.github/workflows/visual-docs-reusable.yml@v0.1.12
     with:
       platform: linux-x86_64
       # Pin the CLI to an explicit tag, not "latest": the install runs inside the
       # Playwright container, which has no `gh`, and "latest" resolution shells out
       # to `gh release view`. An explicit tag downloads the release asset directly
       # (and makes the pipeline reproducible).
-      screencomp-version: v0.1.11
+      screencomp-version: v0.1.12
       container: mcr.microsoft.com/playwright:v1.60.0-noble # MUST match package.json's playwright version
       gallery-title: "Acme — visual docs"
       # Runs inside `container`, once into shots/current/<platform> and again into
