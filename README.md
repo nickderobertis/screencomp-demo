@@ -26,16 +26,34 @@ Two ideas from the screencomp standard:
   compares by content digest, so the manifest is all `classify`/`comment` need,
   and the repo never accrues binary history.
 
-[`.github/workflows/visual-docs.yml`](.github/workflows/visual-docs.yml):
+[`.github/workflows/visual-docs.yml`](.github/workflows/visual-docs.yml) is the
+**canonical, copy-paste setup**: it delegates the entire pipeline to screencomp's
+**reusable workflow** (`visual-docs-reusable.yml`, new in **v0.1.11**) and supplies
+only this repo's capture command. End to end:
 
-- **push to `main`** → capture → reproducibility gate → `screencomp gallery` →
-  deploy to GitHub Pages (the blessed "current state", also the *before* pixels
-  for PR previews).
-- **pull request** → capture → classify against the committed manifest → deploy a
-  **before/after** preview under `pr/<n>/` (before = main's deployed gallery) →
-  `screencomp comment` posts a sticky comment → push a regenerated manifest to
+- **push to `main`** → capture → `verify` reproducibility gate → classify →
+  `gallery` → deploy to GitHub Pages root (the blessed "current state", and the
+  baseline the PR comment links its "Before" to).
+- **pull request** → capture → `verify` → classify against the committed manifest
+  → deploy a preview under `pr-<n>/` → sticky before/after comment (Before = the
+  deployed root gallery, After = the preview) → push a regenerated manifest to
   the PR branch (its text diff, old→new hash per shot, is the review record).
-- **pull request close** → remove the `pr/<n>/` preview.
+- **pull request close** → remove the `pr-<n>/` preview (the one step this repo
+  still hand-rolls, since the reusable workflow has no close handler).
+
+To copy this into your own project: lift `visual-docs.yml`, point its
+`capture-command` at your stack (it must write `$SHOTS_OUT/<project>/<name>.png`),
+set `container` to your Playwright image, and seed the manifest once (below). The
+reusable workflow installs screencomp, runs the capture twice for the gate, and
+handles the gallery/preview/comment/manifest for you. If your repo enforces
+required status checks, set a `VISUAL_DOCS_PUSH_TOKEN` secret (a fine-grained PAT
+or App token) so the manifest auto-push can re-trigger CI — otherwise the default
+`GITHUB_TOKEN`'s push starts no runs and the PR stalls.
+
+Locally, the same `screencomp` commands the reusable workflow runs in CI are
+available to you directly — `doctor` preflights the `<project>/<name>.png` layout
+and resolves the platform key, and `verify` is the dedicated reproducibility gate
+(two captures of one build must be byte-identical). See [Local capture](#local-capture).
 
 ## Local capture
 
@@ -55,7 +73,10 @@ manifest (i.e. this machine reproduces CI's amd64 bytes). Works on x86_64 Linux
 (native) and on arm64 Linux / Apple Silicon (amd64 under emulation).
 
 ```sh
-# screencomp must be on PATH (or pass SCREENCOMP=/path/to/screencomp)
+# screencomp must be on PATH (or pass SCREENCOMP=/path/to/screencomp). Install
+# the checksum-verified prebuilt binary (v0.1.10's POSIX installer; it aborts
+# rather than install a binary it cannot SHA-256 verify):
+#   curl -fsSL https://raw.githubusercontent.com/nickderobertis/screencomp/main/scripts/install.sh | sh
 ./scripts/verify-local.sh
 ```
 
@@ -73,7 +94,10 @@ for out in shots/current shots/verify; do
     -v "$PWD:/work" -w /work "$IMG" \
     bash -lc "npm ci && node capture.mjs $out/linux-x86_64 site"
 done
-screencomp classify --baseline shots/current --current shots/verify \
+
+# Preflight the layout, then gate on byte-for-byte reproducibility (v0.1.10).
+screencomp doctor --input shots/current --platform linux-x86_64 --exit-code
+screencomp verify --first shots/current --second shots/verify \
   --platform linux-x86_64 --exit-code        # expect exit 0
 
 # Compare against the committed baseline manifest (host is not linux-x86_64, so
@@ -90,3 +114,37 @@ screencomp manifest --input shots/current --platform linux-x86_64 \
 ```
 
 CI regenerates and commits this on every PR; seed it once before the first PR.
+
+### Pre-push guard (optional)
+
+[`scripts/pre-push`](scripts/pre-push) catches drift *before* it is pushed. On
+each push it asks `screencomp scope` whether any screenshot-relevant file changed
+— the `[guard].paths` globs in [`screencomp.toml`](screencomp.toml) — and only
+then runs the local check above. If the capture has drifted from the committed
+manifest the push is **blocked**, so a screenshot change never lands without the
+manifest update that records it.
+
+```sh
+cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+# Bypass once with: git push --no-verify
+```
+
+It no-ops when nothing relevant changed, when `screencomp` is not installed, and
+inside CI (the reusable workflow already runs the full check). screencomp's
+`examples/hooks/README.md` has equivalent wiring for husky, lefthook, and
+simple-git-hooks.
+
+## Configuration
+
+[`screencomp.toml`](screencomp.toml) is read automatically from the repo root by
+every `screencomp` invocation — both the reusable workflow's `comment` step in CI
+and the `scope` check locally:
+
+- **`[comment]`** styles the sticky PR comment (heading, the `marker` that makes
+  re-runs upsert one comment, inline-thumbnail `embed_limit`, `show_unchanged`).
+- **`[guard]`** lists the paths that make the local pre-push guard fire, plus the
+  platform key, manifest, and review-gallery location it uses.
+
+This is the same file `screencomp init` scaffolds (alongside the workflow and the
+`.gitignore` block); it is committed here so the whole local + CI pipeline is
+configured in one place.
