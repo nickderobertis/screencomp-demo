@@ -192,9 +192,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # The deployed preview is a DIFF gallery (built with `--baseline before`),
+          # so its images live under <pr>/baseline/<project>/<name>.png and
+          # <pr>/current/<project>/<name>.png. Because we classify with
+          # `--baseline-manifest` (no baseline PNGs), `comment` left to itself would
+          # point "After" at the plain <URL>/<project>/<name>.png layout (a 404 here)
+          # and omit "Before". The explicit --baseline-url/--current-url overrides
+          # point each side at the diff gallery's real subtrees, so both the Before
+          # and After thumbnails resolve.
+          BASE="https://nickderobertis.github.io/screencomp-demo/pr/${PR}"
           screencomp comment --baseline-manifest "$MANIFEST" \
             --current shots/current --platform auto \
-            --gallery-url "https://nickderobertis.github.io/screencomp-demo/pr/${PR}/" \
+            --gallery-url "$BASE/" \
+            --baseline-url "$BASE/baseline/" \
+            --current-url "$BASE/current/" \
             --output comment.md
           gh pr comment "$PR" --body-file comment.md --edit-last \
             || gh pr comment "$PR" --body-file comment.md

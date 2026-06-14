@@ -45,6 +45,14 @@ tree or a wrong `--platform` early), and `screencomp verify` is the dedicated
 reproducibility gate — two independent captures of one build must be
 byte-identical (it replaces the earlier `classify --baseline/--current` trick).
 
+The PR preview is a **diff gallery** (`gallery --baseline before`), so its images
+live under `pr/<n>/baseline/…` and `pr/<n>/current/…`. Because the comment
+classifies against the image-free manifest (`--baseline-manifest`, no baseline
+PNGs), `screencomp comment` is given explicit `--baseline-url`/`--current-url`
+overrides pointing at those two subtrees — otherwise it would point "After" at a
+plain-layout URL and drop the "Before" link. `--gallery-url` remains the
+"View full gallery" link.
+
 ## Local capture
 
 Use the same image as CI so captures match. On Apple Silicon, `--platform`
