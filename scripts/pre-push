@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Local pre-push guard for the screencomp visual-docs standard.
+#
+# Before a push, ask `screencomp scope` whether any screenshot-relevant path
+# (the [guard].paths globs in screencomp.toml) changed in the commits being
+# pushed. If so, run the SAME verification CI runs (scripts/verify-local.sh): a
+# byte-reproducible capture in the pinned container, checked against the
+# committed manifest. If the capture has drifted from the baseline the push is
+# BLOCKED, so a screenshot change is never pushed without the manifest update
+# that records it.
+#
+#   Install:  cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+#             (or wire it via husky/lefthook/simple-git-hooks — see screencomp's
+#              examples/hooks/README.md)
+#   Bypass:   git push --no-verify
+set -uo pipefail
+
+# CI already runs the full check via the reusable workflow; never guard there.
+[ -n "${CI:-}" ] && exit 0
+# No screencomp on PATH => nothing to guard with; don't get in the way.
+command -v screencomp >/dev/null 2>&1 || exit 0
+
+ZERO=0000000000000000000000000000000000000000
+remote_head="$(git rev-parse --verify --quiet origin/HEAD || true)"
+
+# git feeds the hook one line per ref on stdin:
+#   <local ref> <local sha> <remote ref> <remote sha>
+# Collect the changed files across every pushed range.
+changed=""
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  [ "$local_sha" = "$ZERO" ] && continue                 # branch deletion: nothing to capture
+  if [ "$remote_sha" = "$ZERO" ]; then
+    range="${remote_head:+$remote_head..}$local_sha"     # new branch: diff vs origin/HEAD if known
+  else
+    range="$remote_sha..$local_sha"
+  fi
+  changed+="$(git diff --name-only "$range" 2>/dev/null)"$'\n'
+done
+
+# exit 3 => a relevant path matched (capture); exit 0 => nothing relevant (skip).
+printf '%s' "$changed" | screencomp scope --changed-from - --exit-code
+case $? in
+  0) exit 0 ;;
+  3) ;;
+  *) echo "pre-push: screencomp scope errored; not blocking the push." >&2; exit 0 ;;
+esac
+
+echo "pre-push: screenshot-relevant changes detected — running the local visual check…"
+if "$(git rev-parse --show-toplevel)/scripts/verify-local.sh"; then
+  exit 0
+fi
+
+cat >&2 <<'MSG'
+
+pre-push: the capture drifted from the committed baseline manifest.
+If the change is intended, reseed the manifest, commit it, then push again:
+
+    screencomp manifest --input shots/current --platform linux-x86_64 \
+      --output shots/baseline/linux-x86_64.sha256
+    git add shots/baseline/linux-x86_64.sha256 && git commit -m "Update visual baseline"
+
+To push without running this guard once:  git push --no-verify
+MSG
+exit 1

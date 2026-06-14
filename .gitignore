@@ -1,12 +1,11 @@
 node_modules/
 
-# Captured screenshot working trees (regenerated every run; never committed).
+# Captured / derived screenshot trees — regenerated every run, never committed:
+#   current, verify -> the reproducibility gate;  review -> the pre-push guard's
+#   local drift gallery.
 shots/current/
 shots/verify/
-before/
-preview/
-site_gallery/
-comment.md
+shots/review/
 
 # The committed baseline is the tiny digest manifest only — shots/baseline/*.sha256
 # is tracked; baseline PNGs are never stored.

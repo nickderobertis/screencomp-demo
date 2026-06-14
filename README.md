@@ -114,3 +114,37 @@ screencomp manifest --input shots/current --platform linux-x86_64 \
 ```
 
 CI regenerates and commits this on every PR; seed it once before the first PR.
+
+### Pre-push guard (optional)
+
+[`scripts/pre-push`](scripts/pre-push) catches drift *before* it is pushed. On
+each push it asks `screencomp scope` whether any screenshot-relevant file changed
+— the `[guard].paths` globs in [`screencomp.toml`](screencomp.toml) — and only
+then runs the local check above. If the capture has drifted from the committed
+manifest the push is **blocked**, so a screenshot change never lands without the
+manifest update that records it.
+
+```sh
+cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+# Bypass once with: git push --no-verify
+```
+
+It no-ops when nothing relevant changed, when `screencomp` is not installed, and
+inside CI (the reusable workflow already runs the full check). screencomp's
+`examples/hooks/README.md` has equivalent wiring for husky, lefthook, and
+simple-git-hooks.
+
+## Configuration
+
+[`screencomp.toml`](screencomp.toml) is read automatically from the repo root by
+every `screencomp` invocation — both the reusable workflow's `comment` step in CI
+and the `scope` check locally:
+
+- **`[comment]`** styles the sticky PR comment (heading, the `marker` that makes
+  re-runs upsert one comment, inline-thumbnail `embed_limit`, `show_unchanged`).
+- **`[guard]`** lists the paths that make the local pre-push guard fire, plus the
+  platform key, manifest, and review-gallery location it uses.
+
+This is the same file `screencomp init` scaffolds (alongside the workflow and the
+`.gitignore` block); it is committed here so the whole local + CI pipeline is
+configured in one place.
