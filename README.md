@@ -98,7 +98,7 @@ done
 # Preflight the layout, then gate on byte-for-byte reproducibility (v0.1.10).
 screencomp doctor --input shots/current --platform linux-x86_64 --exit-code
 screencomp verify --first shots/current --second shots/verify \
-  --platform linux-x86_64 --exit-code        # expect exit 0
+  --platform linux-x86_64        # gates on its own: exit 0 if reproducible, 3 if not
 
 # Compare against the committed baseline manifest (host is not linux-x86_64, so
 # pass the key explicitly instead of `auto`).

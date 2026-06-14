@@ -38,6 +38,8 @@ while read -r _local_ref local_sha _remote_ref remote_sha; do
 done
 
 # exit 3 => a relevant path matched (capture); exit 0 => nothing relevant (skip).
+# scope auto-discovers screencomp.toml by walking up from the cwd (screencomp
+# >= v0.1.14), so [guard].paths is picked up with no --config needed.
 printf '%s' "$changed" | screencomp scope --changed-from - --exit-code
 case $? in
   0) exit 0 ;;

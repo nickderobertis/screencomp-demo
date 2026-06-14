@@ -58,7 +58,7 @@ note "2/3 reproducibility gate: two independent captures must be byte-identical"
 "$SC" doctor --input shots/current --platform "$KEY" --exit-code || true
 # `verify` (v0.1.10) is the purpose-built reproducibility gate (replaces the old
 # `classify --baseline/--current`): two captures of one build must match exactly.
-if "$SC" verify --first shots/current --second shots/verify --platform "$KEY" --exit-code; then
+if "$SC" verify --first shots/current --second shots/verify --platform "$KEY"; then
   echo "PASS: capture is reproducible run-to-run on this machine"
 else
   echo "FAIL: capture is NOT reproducible here (nondeterministic rendering)"; fail=1
