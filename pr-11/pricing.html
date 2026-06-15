@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Acme — Pricing</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        color: #1a1a2e;
+        background: #f4f5fb;
+      }
+      header {
+        background: linear-gradient(135deg, #ff7a5b, #ff5b8a);
+        color: #fff;
+        padding: 64px 32px;
+        text-align: center;
+      }
+      header h1 { font-size: 44px; letter-spacing: -0.5px; }
+      header p { margin-top: 12px; font-size: 18px; opacity: 0.92; }
+      nav { display: flex; gap: 24px; justify-content: center; padding: 20px; background: #fff; }
+      nav a { color: #ff5b8a; text-decoration: none; font-weight: 600; }
+      main { max-width: 760px; margin: 0 auto; padding: 48px 32px; }
+      .tiers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+      .tier { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 6px 24px rgba(31, 41, 99, 0.08); text-align: center; }
+      .tier h2 { font-size: 20px; margin-bottom: 8px; }
+      .tier .price { font-size: 32px; font-weight: 700; color: #ff5b8a; }
+      .tier p { margin-top: 8px; color: #45475a; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Pricing</h1>
+      <p>Simple plans that scale with your team.</p>
+    </header>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="about.html">About</a>
+    </nav>
+    <main>
+      <div class="tiers">
+        <div class="tier"><h2>Starter</h2><div class="price">$0</div><p>Up to 3 dashboards.</p></div>
+        <div class="tier"><h2>Team</h2><div class="price">$49</div><p>Unlimited dashboards.</p></div>
+        <div class="tier"><h2>Scale</h2><div class="price">$199</div><p>SSO and audit logs.</p></div>
+      </div>
+    </main>
+  </body>
+</html>
