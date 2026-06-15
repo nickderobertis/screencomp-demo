@@ -4,10 +4,10 @@ name: Visual docs
 # whole pipeline — capture in a pinned container, verify reproducibility,
 # classify against the committed image-free manifest, deploy the gallery (the
 # blessed "current state" on push; a per-PR preview under pr-<n>/), post a sticky
-# before/after comment, and push the regenerated manifest to the PR branch — is
-# delegated to screencomp's reusable workflow. The ONLY thing this repo provides
-# is its capture command (capture.mjs); the only thing it still hand-rolls is the
-# preview cleanup on PR close, which the reusable workflow does not handle.
+# before/after comment, push the regenerated manifest, AND keep the gh-pages
+# branch bounded (delete a PR's preview when it closes; squash history on the
+# schedule below) — is delegated to screencomp's reusable workflow. The ONLY thing
+# this repo provides is its capture command (capture.mjs).
 #
 # See README "Local capture" to reproduce the same captures on your machine.
 
@@ -15,7 +15,12 @@ on:
   push:
     branches: [main]
   pull_request:
+    # `closed` lets the reusable workflow delete this PR's gh-pages preview.
     types: [opened, synchronize, reopened, closed]
+  schedule:
+    # Monthly: the reusable workflow squashes the gh-pages gallery history to a
+    # single commit so the committed PNGs do not grow the branch without bound.
+    - cron: "27 4 1 * *"
 
 permissions:
   contents: write # push gh-pages; commit the regenerated manifest to the PR branch
@@ -27,20 +32,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Capture -> verify -> classify -> gallery -> deploy -> comment -> manifest.
-  # Runs on push and on PR open/synchronize/reopen; skipped on PR close.
+  # One call handles the whole lifecycle and routes by event internally:
+  # capture/verify/classify/gallery/deploy/comment/manifest on push and PR
+  # open/sync/reopen, preview cleanup on PR close, history prune on the schedule
+  # above. No close-gate and no hand-rolled cleanup job — the reusable workflow
+  # owns all of it now (gh-pages-maintenance, on by default).
   visual-docs:
-    if: ${{ !(github.event_name == 'pull_request' && github.event.action == 'closed') }}
-    uses: nickderobertis/screencomp/.github/workflows/visual-docs-reusable.yml@v0.1.13
+    uses: nickderobertis/screencomp/.github/workflows/visual-docs-reusable.yml@v0.3.0
     with:
       platform: linux-x86_64
       # Pin the CLI to an explicit tag, not "latest": the install runs inside the
       # Playwright container, which has no `gh`, and "latest" resolution shells out
       # to `gh release view`. An explicit tag downloads the release asset directly
       # (and makes the pipeline reproducible).
-      screencomp-version: v0.1.13
+      screencomp-version: v0.3.0
       container: mcr.microsoft.com/playwright:v1.60.0-noble # MUST match package.json's playwright version
       gallery-title: "Acme — visual docs"
+      # gh-pages upkeep is built in and on by default; the `closed` PR type and the
+      # `schedule:` trigger above feed its cleanup-preview / prune-history jobs.
+      gh-pages-maintenance: true
       # Runs inside `container`, once into shots/current/<platform> and again into
       # shots/verify/<platform> for the reproducibility gate. capture.mjs writes
       # $SHOTS_OUT/<project>/<name>.png — exactly the layout screencomp classifies.
@@ -54,28 +64,3 @@ jobs:
       # workflows (a fine-grained PAT or App token). Empty => falls back to
       # GITHUB_TOKEN, which is fine when no checks are required.
       push-token: ${{ secrets.VISUAL_DOCS_PUSH_TOKEN }}
-
-  # Remove a PR's preview directory when the PR closes. The reusable workflow has
-  # no close handler, so without this the pr-<n>/ previews accrue on gh-pages.
-  cleanup:
-    if: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: gh-pages
-          fetch-depth: 0
-      - name: Remove pr-<n>/ preview
-        env:
-          PR: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          if [ -d "pr-${PR}" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git rm -r "pr-${PR}"
-            git commit -m "chore: remove visual-diff preview for PR #${PR}"
-            git push
-          else
-            echo "No preview directory for PR #${PR}."
-          fi
