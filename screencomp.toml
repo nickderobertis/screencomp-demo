@@ -1,20 +1,22 @@
-# screencomp configuration. Picked up automatically by `screencomp` when run from
-# the repo root — in CI (the reusable workflow's `comment` step) and locally (the
-# pre-push guard's `scope` check). This is the same file `screencomp init`
-# scaffolds; it is committed so the whole pipeline is configured in one place.
+# MANAGED FILE — source of truth is nickderobertis/screencomp:demo/screencomp.toml.
+# Edit it there; CI (sync-demo.yml) opens a PR on screencomp-demo. Do not edit here.
+#
+# screencomp configuration. See https://github.com/nickderobertis/screencomp.
+
+[capture]
+# CPU architectures the demo maintains screenshots for. Captures run in a Linux
+# container, so only the arch varies. CI fans out one capture lane per entry and
+# reads this list via `screencomp arches`. The demo's CI runs on amd64 runners,
+# so it captures x86_64; add an arch (with a matching-arch runner) to support more.
+arches = ["x86_64"]
 
 [comment]
-# Styling for the sticky PR comment the reusable workflow posts.
-title = "Visual changes"   # comment heading
-marker = "screencomp"      # embedded as <!-- screencomp --> so re-runs upsert one comment
-show_unchanged = false     # keep the comment to what actually changed
-embed_limit = 10           # inline the diff thumbnails when ≤ N shots differ (0 disables)
+title = "Visual changes"
+marker = "screencomp"        # [A-Za-z0-9_-]; one sticky comment per marker
+embed_limit = 10             # embed images inline when <= N shots differ (0 disables)
 
 [guard]
-# Drives the optional local pre-push guard (scripts/pre-push). `screencomp scope`
-# matches the files in a push against these globs; a hit means screenshot-relevant
-# code changed and the guard runs the local visual check before the push lands.
-paths = ["site/**", "capture.mjs", "package.json", "package-lock.json"]
-platform = "linux-x86_64"                          # the single platform key (see README)
-manifest = "shots/baseline/linux-x86_64.sha256"    # the committed image-free baseline
-gallery  = "shots/review"                          # where a local drift review-gallery is written
+# Local pre-push guard (.githooks/pre-push): re-capture only when these globs
+# change. Adjust to the files that actually affect the demo's screenshots.
+paths = ["src/**", "**/*.{css,scss,html}"]
+gallery = "shots/review"
