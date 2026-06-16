@@ -1,15 +1,10 @@
+# Managed from nickderobertis/screencomp:demo/ — do not edit in the demo repo.
+# Commit the per-arch digest baseline (shots/baseline/*.sha256), never the PNGs
+# or generated galleries.
 node_modules/
-
-# Captured / derived screenshot trees — regenerated every run, never committed:
-#   current, verify -> the reproducibility gate;  review -> the pre-push guard's
-#   local drift gallery.
 shots/current/
 shots/verify/
 shots/review/
-
-# The committed baseline is the tiny digest manifest only — shots/baseline/*.sha256
-# is tracked; baseline PNGs are never stored.
-
-# QEMU core dumps left by amd64 Chromium crashes under emulation (Apple Silicon).
-core
-*.core
+/site/
+/test-results/
+/playwright-report/
