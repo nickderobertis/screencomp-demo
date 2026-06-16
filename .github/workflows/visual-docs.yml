@@ -1,65 +1,40 @@
+# MANAGED FILE — source of truth is nickderobertis/screencomp:demo/visual-docs.yml.
+# Edit it there; CI (sync-demo.yml) opens a PR on screencomp-demo. Do not edit here.
+#
+# The demo exercises the batteries-included reusable workflow: it owns only the
+# capture; screencomp owns the classify gate, gallery, GitHub Pages deploy, and
+# the sticky before/after PR comment. Which CPU arch(es) CI captures is read from
+# [capture].arches in screencomp.toml — one lane per arch, each on a matching
+# runner. Pinned to the floating @v0 tag so released interface changes flow in.
 name: Visual docs
 
-# The canonical, copy-paste setup for the screencomp visual-docs standard. The
-# whole pipeline — capture in a pinned container, verify reproducibility,
-# classify against the committed image-free manifest, deploy the gallery (the
-# blessed "current state" on push; a per-PR preview under pr-<n>/), post a sticky
-# before/after comment, push the regenerated manifest, AND keep the gh-pages
-# branch bounded (delete a PR's preview when it closes; squash history on the
-# schedule below) — is delegated to screencomp's reusable workflow. The ONLY thing
-# this repo provides is its capture command (capture.mjs).
-#
-# See README "Local capture" to reproduce the same captures on your machine.
-
 on:
+  pull_request:
+    # `closed` lets screencomp delete this PR's gh-pages preview once it closes.
+    types: [opened, synchronize, reopened, closed]
   push:
     branches: [main]
-  pull_request:
-    # `closed` lets the reusable workflow delete this PR's gh-pages preview.
-    types: [opened, synchronize, reopened, closed]
   schedule:
-    # Monthly: the reusable workflow squashes the gh-pages gallery history to a
-    # single commit so the committed PNGs do not grow the branch without bound.
+    # Monthly: prune the gh-pages gallery history so committed PNGs do not grow
+    # the branch without bound (keeps the 20 most recent versions by default).
     - cron: "27 4 1 * *"
 
 permissions:
-  contents: write # push gh-pages; commit the regenerated manifest to the PR branch
-  pull-requests: write # post the diff comment
-
-# Serialize so concurrent runs never race to push the gh-pages branch.
-concurrency:
-  group: gh-pages-deploy
-  cancel-in-progress: false
+  contents: write       # push the gh-pages gallery
+  pull-requests: write  # post the diff comment
 
 jobs:
-  # One call handles the whole lifecycle and routes by event internally:
-  # capture/verify/classify/gallery/deploy/comment/manifest on push and PR
-  # open/sync/reopen, preview cleanup on PR close, history prune on the schedule
-  # above. No close-gate and no hand-rolled cleanup job — the reusable workflow
-  # owns all of it now (gh-pages-maintenance, on by default).
   visual-docs:
     uses: nickderobertis/screencomp/.github/workflows/visual-docs-reusable.yml@v0
     with:
-      platform: linux-x86_64
-      # Pin the CLI to an explicit released tag for a reproducible pipeline (the
-      # reusable workflow's `@v0` already floats the composable actions). Bump this
-      # when you want a newer CLI.
-      screencomp-version: v0.2.2
-      container: mcr.microsoft.com/playwright:v1.60.0-noble # MUST match package.json's playwright version
-      gallery-title: "Acme — visual docs"
-      # gh-pages upkeep is built in and on by default; the `closed` PR type and the
-      # `schedule:` trigger above feed its cleanup-preview / prune-history jobs.
+      # Strict gate: CI fails if the capture drifts from the committed baseline.
+      # Regenerate the baseline locally with the pre-push guard and commit it.
+      fail-on-drift: true
       gh-pages-maintenance: true
-      # Runs inside `container`, once into shots/current/<platform> and again into
-      # shots/verify/<platform> for the reproducibility gate. capture.mjs writes
-      # $SHOTS_OUT/<project>/<name>.png — exactly the layout screencomp classifies.
+      gh-pages-history-versions: 20
+      # The demo's capture. It MUST write $SHOTS_OUT/<project>/<name>.png
+      # ($SHOTS_OUT is exported as shots/current/<arch> for each lane).
       capture-command: |
         npm ci
-        node capture.mjs "$SHOTS_OUT" site
-    secrets:
-      # Optional. Only needed if this repo enforces required status checks: the
-      # default GITHUB_TOKEN's manifest push starts no runs and would strand the
-      # PR, so set VISUAL_DOCS_PUSH_TOKEN to a credential that can trigger
-      # workflows (a fine-grained PAT or App token). Empty => falls back to
-      # GITHUB_TOKEN, which is fine when no checks are required.
-      push-token: ${{ secrets.VISUAL_DOCS_PUSH_TOKEN }}
+        npx playwright install --with-deps chromium
+        npx playwright test
