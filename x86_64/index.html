@@ -4,13 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Visual docs</title>
-<style>body{font-family:system-ui,sans-serif;margin:2rem;color:#222}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem}section{margin-bottom:2rem}figure{margin:0}img{width:100%;height:auto;border:1px solid #ddd;border-radius:4px}figcaption{font-size:.85rem;color:#555;margin-top:.25rem}</style>
+<style>body{font-family:system-ui,sans-serif;margin:2rem;color:#222}section.shot{margin-bottom:2.5rem}h2{margin-bottom:.5rem}.toggles{display:flex;flex-wrap:wrap;gap:1rem;margin:.25rem 0 .75rem}.toggle{display:flex;align-items:center;gap:.4rem}.dim-label{font-size:.8rem;color:#555}.toggle button{font:inherit;font-size:.8rem;padding:.15rem .6rem;border:1px solid #bbb;background:#f6f6f6;border-radius:999px;cursor:pointer}.toggle button.active{background:#222;color:#fff;border-color:#222}.variants img{max-width:100%;height:auto;border:1px solid #ddd;border-radius:4px}.variant[hidden]{display:none}</style>
 </head>
 <body>
 <h1>Visual docs</h1>
-<section><h2>marketing</h2><div class="grid">
-<figure><img loading="lazy" src="marketing/about.png" alt="marketing/about.png"><figcaption>about</figcaption></figure>
-<figure><img loading="lazy" src="marketing/home.png" alt="marketing/home.png"><figcaption>home</figcaption></figure>
-</div></section>
+<section class="shot"><h2>about</h2>
+<div class="toggles"><div class="toggle" data-dim="viewport"><span class="dim-label">Viewport</span><button type="button" data-val="desktop" class="active">desktop</button><button type="button" data-val="mobile">mobile</button></div></div>
+<div class="variants"><img class="variant" data-variant="viewport=desktop" loading="lazy" src="about/desktop.png" alt="about [viewport=desktop]"><img class="variant" data-variant="viewport=mobile" loading="lazy" src="about/mobile.png" alt="about [viewport=mobile]" hidden></div></section>
+<section class="shot"><h2>home</h2>
+<div class="toggles"><div class="toggle" data-dim="viewport"><span class="dim-label">Viewport</span><button type="button" data-val="desktop" class="active">desktop</button><button type="button" data-val="mobile">mobile</button></div></div>
+<div class="variants"><img class="variant" data-variant="viewport=desktop" loading="lazy" src="home/desktop.png" alt="home [viewport=desktop]"><img class="variant" data-variant="viewport=mobile" loading="lazy" src="home/mobile.png" alt="home [viewport=mobile]" hidden></div></section>
+<script>for(const card of document.querySelectorAll('.shot')){const sel={};for(const t of card.querySelectorAll('.toggle')){const a=t.querySelector('button.active')||t.querySelector('button');if(a)sel[t.dataset.dim]=a.dataset.val;}const key=()=>Object.keys(sel).sort().map(k=>k+'='+sel[k]).join(';');const apply=()=>{const want=key();for(const img of card.querySelectorAll('.variant'))img.hidden=img.dataset.variant!==want;for(const b of card.querySelectorAll('.toggle button'))b.classList.toggle('active',sel[b.parentElement.dataset.dim]===b.dataset.val);};for(const b of card.querySelectorAll('.toggle button'))b.addEventListener('click',()=>{sel[b.parentElement.dataset.dim]=b.dataset.val;apply();});apply();}</script>
 </body>
 </html>
