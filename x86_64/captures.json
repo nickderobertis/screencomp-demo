@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "shots": [
+    {
+      "name": "about",
+      "toggles": {
+        "viewport": "desktop"
+      },
+      "hash": "558b566bd88740f8e617531cb1a86c60e0d79c58d86c0d0889c5b357ab2d3650",
+      "image": "about/desktop.png"
+    },
+    {
+      "name": "about",
+      "toggles": {
+        "viewport": "mobile"
+      },
+      "hash": "b76a0ad5d5007bde5fbe69b6b99616550cdb9cf9fee7afc79dca1755beac4e7f",
+      "image": "about/mobile.png"
+    },
+    {
+      "name": "home",
+      "toggles": {
+        "viewport": "desktop"
+      },
+      "hash": "0fff7b2e78831d7e6616a2bbe47978424db7528d4f54d9ba88be0849baf237ac",
+      "image": "home/desktop.png"
+    },
+    {
+      "name": "home",
+      "toggles": {
+        "viewport": "mobile"
+      },
+      "hash": "99c197f19c44b4065a50a795faff9e9c4e670ff812bfe75c0554cc4780181edc",
+      "image": "home/mobile.png"
+    }
+  ]
+}
